@@ -2,28 +2,29 @@ import { motion } from "motion/react";
 import { Shield, Heart, Sparkles, RefreshCw, LayoutDashboard } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useState, useEffect } from "react";
+import { api } from "../api";
 
 export function Home() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
-    const calibrationData = localStorage.getItem("syntex_calibration");
-    if (calibrationData) {
-      const data = JSON.parse(calibrationData);
-      setUserName(data.name);
-    }
+    api.getProfile().then((profile) => {
+      if (profile && profile.name) {
+        setUserName(profile.name);
+      }
+    });
   }, []);
 
-  const handleResetProfile = () => {
+  const handleResetProfile = async () => {
     if (window.confirm("Are you sure you want to reset your profile? This will clear all your personalized settings.")) {
-      localStorage.removeItem("syntex_calibration");
+      await api.deleteProfile();
       setUserName(null);
     }
   };
 
-  const handleSkipProfile = () => {
-    localStorage.setItem("syntex_profile_dismissed", "true");
+  const handleSkipProfile = async () => {
+    await api.saveProfile({ dismissed: true });
     navigate("/dashboard");
   };
 

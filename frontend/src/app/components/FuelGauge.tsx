@@ -101,13 +101,6 @@ export function FuelGauge({
         { range: "High (60-85%)", color: "text-yellow-400", description: "Cognitive fatigue building, time to simplify" },
         { range: "Critical (85-100%)", color: "text-red-400", description: "Mental exhaustion, rest required" }
       ];
-    } else if (title === "Focus Status") {
-      return [
-        { range: "Low (0-30%)", color: "text-blue-400", description: "Difficulty concentrating, frequent distractions" },
-        { range: "Moderate (30-60%)", color: "text-yellow-400", description: "Basic focus present, may need support" },
-        { range: "Optimal (60-85%)", color: "text-green-400", description: "Deep focus achieved, in the flow state" },
-        { range: "Peak (85-100%)", color: "text-emerald-400", description: "Hyperfocus mode, excellent concentration" }
-      ];
     }
     return [];
   };
@@ -116,7 +109,7 @@ export function FuelGauge({
 
   return (
     <div className="flex flex-col relative">
-    <Card className={`bg-gradient-to-br ${colors.gradient} border-gray-800 p-5 flex flex-col h-full transition-all duration-300 hover:scale-105 hover:border-${color}-500/50 cursor-pointer group`}
+    <Card className={`bg-gradient-to-br ${colors.gradient} border-gray-800 p-3 flex flex-col h-full transition-all duration-300 hover:scale-105 hover:border-${color}-500/50 cursor-pointer group`}
       style={{
         boxShadow: 'none'
       }}
@@ -134,25 +127,25 @@ export function FuelGauge({
       }}
     >
       {/* Header Section - Icon and Text stacked vertically */}
-      <div className="flex flex-col items-center text-center mb-8 h-[88px]">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3`}>
-          <Icon className={`w-6 h-6 ${colors.text}`} />
+      <div className="flex flex-col items-center text-center mb-2">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-1`}>
+          <Icon className={`w-4 h-4 ${colors.text}`} />
         </div>
         <div className="w-full">
-          <h3 className="text-sm mb-1 text-white leading-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 500, letterSpacing: '0.01em' }}>{title}</h3>
-          <p className="text-xs text-gray-400 leading-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '0.005em' }}>{subtitle}</p>
+          <h3 className="text-xs mb-0.5 text-white leading-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 500, letterSpacing: '0.01em' }}>{title}</h3>
+          <p className="text-[10px] text-gray-400 leading-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '0.005em' }}>{subtitle}</p>
         </div>
       </div>
 
       {/* Value OUTSIDE the gauge bar */}
-      <div className="flex justify-center items-center mb-8 h-12">
+      <div className="flex justify-center items-center mb-2 h-8">
         <motion.div
-          className="text-4xl text-white drop-shadow-lg text-center"
-          style={{ 
+          className="text-2xl text-white drop-shadow-lg text-center"
+          style={{
             textShadow: '0 0 20px rgba(255, 255, 255, 0.6), 0 0 40px rgba(255, 255, 255, 0.3)',
             fontFamily: "'JetBrains Mono', monospace",
             fontWeight: 600,
-            minWidth: '80px'
+            minWidth: '60px'
           }}
           key={value}
           initial={{ scale: 1.2, opacity: 0 }}
@@ -163,8 +156,8 @@ export function FuelGauge({
         </motion.div>
       </div>
 
-      {/* Gauge Container - Normal width gauge bar */}
-      <div className="relative flex-1 min-h-[240px]">
+      {/* Gauge Container - compact fixed-height bar */}
+      <div className="relative h-20">
         {/* Background Grid */}
         <div className="absolute inset-0 opacity-20">
           {[...Array(5)].map((_, i) => (
@@ -197,12 +190,12 @@ export function FuelGauge({
 
       {/* Range Guide Button */}
       {rangeInfo.length > 0 && (
-        <div className="relative mt-3">
+        <div className="relative mt-2">
           <button
             onClick={() => setIsOpen(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-800/50 hover:bg-gray-800/70 border border-gray-700 rounded-lg text-sm text-gray-300 transition-all duration-200"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-800/50 hover:bg-gray-800/70 border border-gray-700 rounded-lg text-xs text-gray-300 transition-all duration-200"
           >
-            <Info className="w-4 h-4" />
+            <Info className="w-3.5 h-3.5" />
             <span>Range Guide</span>
           </button>
         </div>

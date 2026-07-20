@@ -27,51 +27,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMonitoring } from "../contexts/MonitoringContext";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CircleMember {
-  id: string;
-  name: string;
-  relationship: "Caregiver" | "Family" | "Friend" | "Therapist" | "Other";
-  avatar: string;
-  isDesignatedCaregiver: boolean;
-  isOnline: boolean;
-  sensoryLoad: number;
-  cognitiveLoad: number;
-  heartRate?: number;
-  biometricPermission: boolean;
-  currentLocation?: string;
-  lastSeen: string;
-  phone?: string;
-  canReceiveAlerts: boolean;
-}
-
-interface CircleGroup {
-  id: string;
-  name: string;
-  emoji: string;
-  members: CircleMember[];
-}
-
-// ─── Location Data ────────────────────────────────────────────────────────────
-
-const locationProfiles: Record<string, { noiseLevel: number; visualStim: number; socialLoad: number; type: string }> = {
-  "Library":           { noiseLevel: 35, visualStim: 20, socialLoad: 10, type: "Low-Stim" },
-  "Coffee Shop":       { noiseLevel: 75, visualStim: 65, socialLoad: 45, type: "High-Stim" },
-  "Quiet Study Room":  { noiseLevel: 30, visualStim: 15, socialLoad: 5,  type: "Low-Stim" },
-  "Lecture Hall":      { noiseLevel: 55, visualStim: 70, socialLoad: 60, type: "Medium-Stim" },
-  "Cafeteria":         { noiseLevel: 80, visualStim: 75, socialLoad: 70, type: "High-Stim" },
-  "Dorm Room":         { noiseLevel: 40, visualStim: 30, socialLoad: 20, type: "Low-Stim" },
-  "Campus Quad":       { noiseLevel: 65, visualStim: 60, socialLoad: 50, type: "Medium-Stim" },
-  "Shopping Mall":     { noiseLevel: 85, visualStim: 90, socialLoad: 80, type: "Very High-Stim" },
-  "Park":              { noiseLevel: 45, visualStim: 40, socialLoad: 25, type: "Low-Stim" },
-  "Gym":               { noiseLevel: 70, visualStim: 65, socialLoad: 40, type: "High-Stim" },
-  "Home (Alone)":      { noiseLevel: 25, visualStim: 20, socialLoad: 0,  type: "Very Low-Stim" },
-  "Restaurant":        { noiseLevel: 75, visualStim: 70, socialLoad: 55, type: "High-Stim" },
-  "Transit Hub":       { noiseLevel: 78, visualStim: 80, socialLoad: 65, type: "High-Stim" },
-  "Clinic / Hospital": { noiseLevel: 50, visualStim: 55, socialLoad: 40, type: "Medium-Stim" },
-};
+import { api, CircleGroup, CircleMember } from "../api";
+import { locationProfiles } from "../lib/locationProfiles";
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 
@@ -81,37 +38,6 @@ const LOAD_HIGH = 80;   // % — elevated
 const LOAD_CRITICAL = 90; // % — alert
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
-
-const DEFAULT_CIRCLES: CircleGroup[] = [
-  {
-    id: "caregivers",
-    name: "Caregivers",
-    emoji: "🛡️",
-    members: [
-      { id: "1", name: "Maya Chen",  relationship: "Caregiver", avatar: "MC", isDesignatedCaregiver: true,  isOnline: true,  sensoryLoad: 28, cognitiveLoad: 41, heartRate: 68,        biometricPermission: true,  currentLocation: "Home (Alone)",  lastSeen: "now",         phone: "+1 555-0192", canReceiveAlerts: true },
-      { id: "2", name: "Dr. Reyes",  relationship: "Therapist", avatar: "DR", isDesignatedCaregiver: true,  isOnline: false, sensoryLoad: 30, cognitiveLoad: 55, heartRate: undefined,  biometricPermission: false, currentLocation: "Clinic / Hospital", lastSeen: "3 hours ago", phone: "+1 555-0288", canReceiveAlerts: true },
-    ],
-  },
-  {
-    id: "family",
-    name: "Family",
-    emoji: "🏠",
-    members: [
-      { id: "3", name: "Dad",  relationship: "Family", avatar: "D",  isDesignatedCaregiver: false, isOnline: true,  sensoryLoad: 47, cognitiveLoad: 56, heartRate: 72,        biometricPermission: true,  currentLocation: "Coffee Shop",   lastSeen: "2 min ago",  phone: "+1 555-0147", canReceiveAlerts: true },
-      { id: "4", name: "Mom",  relationship: "Family", avatar: "M",  isDesignatedCaregiver: false, isOnline: false, sensoryLoad: 27, cognitiveLoad: 52, heartRate: 64,        biometricPermission: true,  currentLocation: "Library",       lastSeen: "1 hour ago", phone: "+1 555-0148", canReceiveAlerts: true },
-      { id: "5", name: "Sam",  relationship: "Family", avatar: "S",  isDesignatedCaregiver: false, isOnline: false, sensoryLoad: 59, cognitiveLoad: 47, heartRate: undefined,  biometricPermission: false, currentLocation: undefined,       lastSeen: "yesterday",                        canReceiveAlerts: false },
-    ],
-  },
-  {
-    id: "friends",
-    name: "Friends",
-    emoji: "👥",
-    members: [
-      { id: "6", name: "Jordan Park", relationship: "Friend", avatar: "JP", isDesignatedCaregiver: false, isOnline: false, sensoryLoad: 72, cognitiveLoad: 68, heartRate: undefined,  biometricPermission: false, currentLocation: "Gym",           lastSeen: "1 hour ago", canReceiveAlerts: false },
-      { id: "7", name: "Alex Kim",    relationship: "Friend", avatar: "AK", isDesignatedCaregiver: false, isOnline: true,  sensoryLoad: 38, cognitiveLoad: 44, heartRate: 77,        biometricPermission: true,  currentLocation: "Park",          lastSeen: "now",         canReceiveAlerts: false },
-    ],
-  },
-];
 
 const CIRCLE_EMOJIS = ["🛡️","🏠","👥","🧒","💼","🌿","❤️","⭐","🎓","🏋️"];
 
@@ -164,18 +90,15 @@ function HrIcon({ bpm, size = 14 }: { bpm: number; size?: number }) {
 export function Circle() {
   const { cognitiveReservoir } = useMonitoring();
 
-  const [circles, setCircles] = useState<CircleGroup[]>(() => {
-    const version = localStorage.getItem("syntex_circles_v");
-    const s = localStorage.getItem("syntex_circles");
-    // If no version stamp or data predates biometric support, reset to defaults
-    if (!s || version !== "3") {
-      localStorage.setItem("syntex_circles_v", "3");
-      localStorage.removeItem("syntex_circles");
-      return DEFAULT_CIRCLES;
-    }
-    return JSON.parse(s);
-  });
-  const [activeCircleId, setActiveCircleId] = useState<string>(circles[0]?.id ?? "");
+  const [circles, setCircles] = useState<CircleGroup[]>([]);
+  const [activeCircleId, setActiveCircleId] = useState<string>("");
+
+  useEffect(() => {
+    api.listCircles().then((loaded) => {
+      setCircles(loaded);
+      setActiveCircleId((prev) => prev || loaded[0]?.id || "");
+    });
+  }, []);
   const [circleDropdownOpen, setCircleDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -204,7 +127,7 @@ export function Circle() {
   const [newCircleEmoji, setNewCircleEmoji] = useState("👥");
 
   // Location
-  const [currentLocation, setCurrentLocation] = useState(() => localStorage.getItem("syntex_location") || "Not set");
+  const [currentLocation, setCurrentLocation] = useState("Not set");
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [locationWarning, setLocationWarning] = useState(false);
   const [locationWarningMessage, setLocationWarningMessage] = useState("");
@@ -212,9 +135,9 @@ export function Circle() {
 
   const activeCircle = circles.find(c => c.id === activeCircleId) ?? circles[0];
 
-  // Persist
-  useEffect(() => { localStorage.setItem("syntex_circles", JSON.stringify(circles)); }, [circles]);
-  useEffect(() => { if (currentLocation !== "Not set") localStorage.setItem("syntex_location", currentLocation); }, [currentLocation]);
+  // Load + persist location
+  useEffect(() => { api.getLocation().then((loc) => setCurrentLocation(loc.current)); }, []);
+  useEffect(() => { if (currentLocation !== "Not set") api.setLocation(currentLocation); }, [currentLocation]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -298,58 +221,47 @@ export function Circle() {
     }
   }, [currentLocation, cognitiveReservoir]);
 
-  const sendAlert = (memberId: string) => {
+  const sendAlert = async (memberId: string, reason?: string) => {
+    const name = circles.flatMap(c => c.members).find(m => m.id === memberId)?.name ?? "Caregiver";
     setAlertSentTo(prev => new Set([...prev, memberId]));
     setAlertConfirm(null);
-    const name = circles.flatMap(c => c.members).find(m => m.id === memberId)?.name ?? "Caregiver";
     setAlertSuccess(name);
     setTimeout(() => setAlertSuccess(null), 4000);
+    await api.sendAlert(memberId, name, reason);
   };
 
   const updateMembers = (circleId: string, fn: (members: CircleMember[]) => CircleMember[]) => {
     setCircles(prev => prev.map(c => c.id === circleId ? { ...c, members: fn(c.members) } : c));
   };
 
-  const addMember = () => {
+  const addMember = async () => {
     if (!newName.trim() || !activeCircle) return;
-    const member: CircleMember = {
-      id: Date.now().toString(),
+    const member = await api.addMember(activeCircle.id, {
       name: newName.trim(),
       relationship: newRelationship,
-      avatar: newName.trim().slice(0, 2).toUpperCase(),
-      isDesignatedCaregiver: newRelationship === "Caregiver" || newRelationship === "Therapist",
-      isOnline: false,
-      sensoryLoad: Math.floor(Math.random() * 50) + 20,
-      cognitiveLoad: Math.floor(Math.random() * 50) + 20,
-      heartRate: newBiometric ? Math.floor(Math.random() * 30) + 60 : undefined,
-      biometricPermission: newBiometric,
-      lastSeen: "just added",
       phone: newPhone.trim() || undefined,
-      canReceiveAlerts: !!newPhone.trim(),
-    };
+      biometricPermission: newBiometric,
+    });
     updateMembers(activeCircle.id, ms => [...ms, member]);
     setNewName(""); setNewPhone(""); setNewBiometric(false); setShowAddMember(false);
   };
 
-  const removeMember = (circleId: string, memberId: string) => {
+  const removeMember = async (circleId: string, memberId: string) => {
+    await api.removeMember(circleId, memberId);
     updateMembers(circleId, ms => ms.filter(m => m.id !== memberId));
     setSelectedMember(null);
   };
 
-  const createCircle = () => {
+  const createCircle = async () => {
     if (!newCircleName.trim()) return;
-    const circle: CircleGroup = {
-      id: Date.now().toString(),
-      name: newCircleName.trim(),
-      emoji: newCircleEmoji,
-      members: [],
-    };
+    const circle = await api.createCircle(newCircleName.trim(), newCircleEmoji);
     setCircles(prev => [...prev, circle]);
     setActiveCircleId(circle.id);
     setNewCircleName(""); setShowCreateCircle(false);
   };
 
-  const deleteCircle = (circleId: string) => {
+  const deleteCircle = async (circleId: string) => {
+    await api.deleteCircle(circleId);
     setCircles(prev => {
       const updated = prev.filter(c => c.id !== circleId);
       if (activeCircleId === circleId) setActiveCircleId(updated[0]?.id ?? "");
@@ -518,7 +430,7 @@ export function Circle() {
                 {alertConfirm.reason ? ` regarding: ${alertConfirm.reason}` : " letting them know you need support right now"}.
               </p>
               <div className="flex gap-2">
-                <button onClick={() => sendAlert(alertConfirm.memberId)}
+                <button onClick={() => sendAlert(alertConfirm.memberId, alertConfirm.reason)}
                   className="flex-1 py-2 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-sm font-medium hover:bg-red-500/30 transition-colors">
                   Yes, send alert
                 </button>
@@ -623,6 +535,18 @@ export function Circle() {
         </div>
 
         {/* ── Circle Selector + Members ── */}
+        {circles.length === 0 ? (
+          <div className="text-center py-12 rounded-2xl border border-gray-800 bg-gray-900/40">
+            <Users className="w-8 h-8 mx-auto mb-3 text-gray-600" />
+            <p className="text-gray-300 text-sm font-medium mb-1">No circles yet</p>
+            <p className="text-gray-500 text-xs mb-4 px-6">Create a circle and add the people you'd like to keep in your support network.</p>
+            <button onClick={() => setShowCreateCircle(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium hover:bg-indigo-500/20 transition-colors">
+              <FolderPlus className="w-3.5 h-3.5" />
+              Create your first circle
+            </button>
+          </div>
+        ) : (
         <div>
           {/* Selector row */}
           <div className="flex items-center gap-2 mb-3">
@@ -796,6 +720,7 @@ export function Circle() {
             </div>
           )}
         </div>
+        )}
 
         {/* Privacy note */}
         <div className="flex items-start gap-2 p-3 rounded-xl bg-gray-900/40 border border-gray-800">

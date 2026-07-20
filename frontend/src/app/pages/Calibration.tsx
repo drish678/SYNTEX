@@ -5,6 +5,7 @@ import { ChevronRight, ChevronLeft, Sparkles, User } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { AvatarConfig, AvatarCreator, AvatarSVG, DEFAULT_AVATAR } from "../components/AvatarCreator";
+import { api } from "../api";
 
 export function Calibration() {
   const navigate = useNavigate();
@@ -78,14 +79,13 @@ export function Calibration() {
     }
   };
 
-  const handleComplete = () => {
-    const calibrationData = {
+  const handleComplete = async () => {
+    await api.saveProfile({
       name, age, gender, diagnosis, environment, triggers, fatigueFrequency,
-      completedAt: new Date().toISOString(),
-    };
-    localStorage.setItem("syntex_calibration", JSON.stringify(calibrationData));
+      dismissed: false,
+    });
     if (avatarBuilt) {
-      localStorage.setItem("syntex_avatar", JSON.stringify(avatarConfig));
+      await api.saveAvatar(avatarConfig);
     }
     navigate("/dashboard");
   };
@@ -129,8 +129,8 @@ export function Calibration() {
             Let's personalize SYNTEX for your unique needs
           </p>
           <button
-            onClick={() => {
-              localStorage.setItem("syntex_profile_dismissed", "true");
+            onClick={async () => {
+              await api.saveProfile({ dismissed: true });
               navigate("/dashboard");
             }}
             className="text-gray-500 hover:text-gray-400 text-sm mt-2 transition-colors underline"

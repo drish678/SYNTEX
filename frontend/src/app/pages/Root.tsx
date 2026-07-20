@@ -6,40 +6,44 @@ import { CrisisMode } from "../components/CrisisMode";
 import { toast } from "sonner";
 import { StatusToast } from "../components/StatusToast";
 import Logo from "../components/Logo";
+import { api } from "../api";
 
 export function Root() {
   const location = useLocation();
   const [crisisMode, setCrisisMode] = useState(false);
   const [appEnabled, setAppEnabled] = useState(true);
   const [distractionsDetected] = useState(0); // Real-time tracking of background distractions
-  const [hasProfile, setHasProfile] = useState(() => {
-    return !!(
-      localStorage.getItem("syntex_calibration") ||
-      localStorage.getItem("syntex_profile_dismissed") ||
-      localStorage.getItem("syntex_circles") ||
-      localStorage.getItem("syntex_circles_v")
-    );
-  });
+  const [hasProfile, setHasProfile] = useState(false);
 
   // Screen dimming state
   const [dimLevel, setDimLevel] = useState(0); // 0-100, 0 = no dim, 100 = max dim
-  const [extraDimEnabled, setExtraDimEnabled] = useState(false);
+  const [extraDimEnabled, setExtraDimEnabledState] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
-    const hasData = !!(
-      localStorage.getItem("syntex_calibration") ||
-      localStorage.getItem("syntex_profile_dismissed") ||
-      localStorage.getItem("syntex_circles") ||
-      localStorage.getItem("syntex_circles_v")
-    );
-    setHasProfile(hasData);
+    api.getProfile().then((profile) => setHasProfile(profile !== null));
   }, [location.pathname]);
 
+  useEffect(() => {
+    api.getSettings().then((settings) => {
+      setAppEnabled(!settings.pauseMonitoring);
+      setExtraDimEnabledState(settings.extraDimEnabled);
+      setSettingsLoaded(true);
+    });
+  }, []);
+
+  const setExtraDimEnabled = (enabled: boolean) => {
+    setExtraDimEnabledState(enabled);
+    if (settingsLoaded) api.updateSettings({ extraDimEnabled: enabled });
+  };
+
   const handleManualOverride = () => {
-    setAppEnabled(!appEnabled);
+    const next = !appEnabled;
+    setAppEnabled(next);
+    api.updateSettings({ pauseMonitoring: !next });
     toast.success(appEnabled ? "All monitoring paused" : "Monitoring resumed", {
-      description: appEnabled 
-        ? "You have full control. The app will stay quiet." 
+      description: appEnabled
+        ? "You have full control. The app will stay quiet."
         : "SYNTEX is back online and watching your metrics.",
     });
   };

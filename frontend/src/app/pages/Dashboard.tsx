@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import { useMonitoring } from "../contexts/MonitoringContext";
+import { api } from "../api";
 
 interface OutletContext {
   appEnabled: boolean;
@@ -39,34 +40,23 @@ export function Dashboard() {
   const monitoring = useMonitoring();
   const sensoryLoad = monitoring.sensoryLoad;
   const mentalLoad = monitoring.mentalLoad;
-  const taskFocus = monitoring.focusStatus;
   const cognitiveReservoir = monitoring.cognitiveReservoir;
   const timeToOverload = monitoring.timeToOverload;
-  
-  
+  const noiseLevel = monitoring.noiseLevel;
+  const sessionMinutes = Math.floor(monitoring.sessionSeconds / 60);
+
+
   const [showAlert, setShowAlert] = useState(false);
   const [timeOfDay, setTimeOfDay] = useState(new Date().getHours());
   const [profileData, setProfileData] = useState<any>(null);
-  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(() => {
-    const saved = localStorage.getItem("syntex_avatar");
-    return saved ? JSON.parse(saved) : DEFAULT_AVATAR;
-  });
+  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(DEFAULT_AVATAR);
   const greeting = timeOfDay < 12 ? "Good morning" : timeOfDay < 18 ? "Good afternoon" : "Good evening";
   const [isPaused, setIsPaused] = useState(false);
 
-  // Task tracking for mental load calculation
+  // Task tracking (just used for the Mental Load gauge subtitle count)
   const [tasks, setTasks] = useState<string[]>([]);
   const [completedTasksToday, setCompletedTasksToday] = useState(0);
-  
-  // Focus score tracking
-  const [bestFocusScore, setBestFocusScore] = useState(0);
-  const [lastFocusUpdate, setLastFocusUpdate] = useState<string>("");
-  const [showNewBestScore, setShowNewBestScore] = useState(false);
 
-  // Environmental monitoring
-  const [noiseLevel, setNoiseLevel] = useState(45); // dB
-  const [phoneUsageMinutes, setPhoneUsageMinutes] = useState(0);
-  const [lastProgressTime, setLastProgressTime] = useState(Date.now());
   const [showNoiseAlert, setShowNoiseAlert] = useState(false);
   const [showBreakSuggestion, setShowBreakSuggestion] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
@@ -100,37 +90,18 @@ export function Dashboard() {
 
   // Check if user has completed profile
   useEffect(() => {
-    const calibrationData = localStorage.getItem("syntex_calibration");
-    const profileDismissed = localStorage.getItem("syntex_profile_dismissed");
-    if (calibrationData) {
-      setProfileData(JSON.parse(calibrationData));
-    } else if (profileDismissed === "true") {
-      setProfileData({ dismissed: true });
-    }
-    
-    // Load tasks from localStorage
-    const savedTasks = localStorage.getItem("syntex_tasks");
-    if (savedTasks) {
-      setTasks(JSON.parse(savedTasks));
-    }
-    
-    // Load best focus score
-    const savedBestScore = localStorage.getItem("syntex_best_focus_score");
-    if (savedBestScore) {
-      setBestFocusScore(parseFloat(savedBestScore));
-    }
-    
-    // Load last focus update date
-    const savedLastUpdate = localStorage.getItem("syntex_last_focus_update");
-    if (savedLastUpdate) {
-      setLastFocusUpdate(savedLastUpdate);
-      
-      // Reset completed tasks counter if it's a new day
-      const today = new Date().toDateString();
-      if (savedLastUpdate !== today) {
-        setCompletedTasksToday(0);
-      }
-    }
+    api.getProfile().then((profile) => {
+      if (profile) setProfileData(profile);
+    });
+
+    api.getAvatar().then((avatar) => {
+      if (avatar) setAvatarConfig(avatar);
+    });
+
+    // Load tasks (just used for the active-task count here; full CRUD lives in Tasks.tsx)
+    api.listTasks().then((loadedTasks) => {
+      setTasks(loadedTasks.filter((t) => !t.completed).map((t) => t.title));
+    });
   }, []);
 
   // Monitor sensory load for alerts - calculations now in MonitoringContext
@@ -143,73 +114,40 @@ export function Dashboard() {
     }
   }, [appEnabled, isPaused, sensoryLoad, showAlert]);
 
-  // Environmental monitoring - noise and phone usage
+  // Environmental monitoring — noise now comes from the real microphone
+  // reading in MonitoringContext; this just reacts to it for alerts/cases.
+  useEffect(() => {
+    if (!appEnabled || isPaused || noiseLevel == null) return;
+
+    // Case 1: Detect Audio-Visual Spike (85dB+)
+    if (noiseLevel >= 85 && sensoryLoad > 75) {
+      setAudioVisualSpikeDetected(true);
+    } else if (noiseLevel < 80) {
+      setAudioVisualSpikeDetected(false);
+    }
+
+    // Trigger alert if noise is too high
+    if (noiseLevel > 70 && !showNoiseAlert) {
+      setShowNoiseAlert(true);
+    } else if (noiseLevel < 60) {
+      setShowNoiseAlert(false);
+    }
+  }, [appEnabled, isPaused, noiseLevel, sensoryLoad, showNoiseAlert]);
+
+  // Case 2/3 demo scenarios + real break suggestion, based on real elapsed
+  // session time and current mental load (no more fake random ticks).
   useEffect(() => {
     if (!appEnabled || isPaused) return;
 
-    const envInterval = setInterval(() => {
-      // Simulate noise level changes (in dB)
-      setNoiseLevel((prev) => {
-        const change = (Math.random() - 0.5) * 10;
-        const newLevel = Math.max(30, Math.min(90, prev + change));
-        
-        // Case 1: Detect Audio-Visual Spike (85dB+)
-        if (newLevel >= 85 && sensoryLoad > 75) {
-          setAudioVisualSpikeDetected(true);
-        } else if (newLevel < 80) {
-          setAudioVisualSpikeDetected(false);
-        }
-        
-        // Trigger alert if noise is too high
-        if (newLevel > 70 && !showNoiseAlert) {
-          setShowNoiseAlert(true);
-        } else if (newLevel < 60) {
-          setShowNoiseAlert(false);
-        }
-        
-        return newLevel;
-      });
+    const currentHour = new Date().getHours();
+    if (currentHour >= 17 && mentalLoad > 70 && sessionMinutes > 180) {
+      setSensoryResetSuggested(true);
+    }
 
-      // Track phone usage time
-      setPhoneUsageMinutes((prev) => prev + 0.5);
-
-      // Case 2: Detect Cognitive Wall (5PM + high mental load)
-      const currentHour = new Date().getHours();
-      if (currentHour >= 17 && mentalLoad > 70 && phoneUsageMinutes > 180) {
-        setSensoryResetSuggested(true);
-      }
-
-      // Case 3: Simulate Social Battery drain
-      setSocialBattery((prev) => {
-        const drain = Math.random() * 2;
-        const newBattery = Math.max(0, prev - drain);
-        
-        // Trigger Social Load alert at 15%
-        if (newBattery <= 15 && !socialLoadHigh) {
-          setSocialLoadHigh(true);
-        } else if (newBattery > 20) {
-          setSocialLoadHigh(false);
-        }
-        
-        return newBattery;
-      });
-
-      // Check if there's been progress - simulate task completion
-      const taskProgress = Math.random();
-      if (taskProgress > 0.7) {
-        setLastProgressTime(Date.now());
-        setShowBreakSuggestion(false);
-      } else {
-        // If no progress for 25+ minutes, suggest break
-        const minutesSinceProgress = (Date.now() - lastProgressTime) / 60000;
-        if (minutesSinceProgress > 25 && phoneUsageMinutes > 25) {
-          setShowBreakSuggestion(true);
-        }
-      }
-    }, 30000); // Check every 30 seconds
-
-    return () => clearInterval(envInterval);
-  }, [appEnabled, showNoiseAlert, phoneUsageMinutes, lastProgressTime, isPaused, sensoryLoad, mentalLoad, socialLoadHigh]);
+    if (sessionMinutes > 25 && mentalLoad > 60) {
+      setShowBreakSuggestion(true);
+    }
+  }, [appEnabled, isPaused, mentalLoad, sessionMinutes]);
 
   // Automatic screen dimming based on sensory load
   useEffect(() => {
@@ -227,42 +165,6 @@ export function Dashboard() {
       setDimLevel(0);
     }
   }, [sensoryLoad, appEnabled, extraDimEnabled, setDimLevel]);
-
-  // Daily focus score update and best score tracking
-  useEffect(() => {
-    if (!appEnabled) return;
-
-    const checkDailyFocus = setInterval(() => {
-      const today = new Date().toDateString();
-      
-      // Check if we need to update today's score
-      if (lastFocusUpdate !== today) {
-        // New day - update the focus score
-        const currentScore = Math.round(taskFocus);
-        
-        // Check if this is a new best score
-        if (currentScore > bestFocusScore) {
-          setBestFocusScore(currentScore);
-          setShowNewBestScore(true);
-          localStorage.setItem("syntex_best_focus_score", currentScore.toString());
-          
-          toast.success("New Best Focus Score!", {
-            description: `You reached ${currentScore}! Your previous best was ${bestFocusScore}.`,
-            duration: 6000,
-          });
-          
-          // Hide the new best indicator after 10 seconds
-          setTimeout(() => setShowNewBestScore(false), 10000);
-        }
-        
-        // Update last focus update date
-        setLastFocusUpdate(today);
-        localStorage.setItem("syntex_last_focus_update", today);
-      }
-    }, 60000); // Check every minute
-
-    return () => clearInterval(checkDailyFocus);
-  }, [appEnabled, taskFocus, bestFocusScore, lastFocusUpdate]);
 
   // Cognitive Reservoir monitoring - now handled by MonitoringContext
   // This effect watches for threshold crossings and triggers alerts
@@ -304,42 +206,6 @@ export function Dashboard() {
     if (value > 70) return { label: "High", color: "text-red-400" };
     if (value > 40) return { label: "Moderate", color: "text-amber-400" };
     return { label: "Low", color: "text-emerald-400" };
-  };
-
-  // Task management helpers
-  const addTask = (taskName: string) => {
-    const newTasks = [...tasks, taskName];
-    setTasks(newTasks);
-    localStorage.setItem("syntex_tasks", JSON.stringify(newTasks));
-  };
-
-  const removeTask = (index: number) => {
-    const newTasks = tasks.filter((_, i) => i !== index);
-    setTasks(newTasks);
-    localStorage.setItem("syntex_tasks", JSON.stringify(newTasks));
-    
-    // Increment completed tasks for the day
-    setCompletedTasksToday(prev => prev + 1);
-  };
-
-  // Simulate adding tasks for testing (can be triggered via dev tools or button)
-  const simulateTaskLoad = (count: number) => {
-    const taskNames = [
-      "Complete project report",
-      "Review meeting notes",
-      "Respond to emails",
-      "Prepare presentation",
-      "Update documentation",
-      "Code review",
-      "Team standup",
-      "Research assignment",
-      "Study for exam",
-      "Write essay"
-    ];
-    
-    const tasksToAdd = taskNames.slice(0, count);
-    setTasks(tasksToAdd);
-    localStorage.setItem("syntex_tasks", JSON.stringify(tasksToAdd));
   };
 
   return (
@@ -407,10 +273,10 @@ export function Dashboard() {
         )}
 
         {/* Triad Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-8">
           <FuelGauge
             title="Sensory Load"
-            subtitle="Based on audio & brightness"
+            subtitle={monitoring.location !== "Not set" ? monitoring.location : "Set your location"}
             value={sensoryLoad}
             icon={Eye}
             color="cyan"
@@ -427,31 +293,6 @@ export function Dashboard() {
             status={getLoadStatus(mentalLoad)}
             inverted={true}
           />
-
-          <div className="relative">
-            <FuelGauge
-              title="Focus Status"
-              subtitle="Task engagement intensity"
-              value={taskFocus}
-              icon={Target}
-              color="emerald"
-              status={getStatus(taskFocus)}
-              inverted={false}
-            />
-            {showNewBestScore && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute -top-2 -right-2 bg-gradient-to-br from-amber-500 to-orange-600 text-white px-3 py-1 rounded-full text-xs font-medium shadow-lg"
-                style={{
-                  boxShadow: '0 0 20px rgba(245, 158, 11, 0.6)',
-                }}
-              >
-                🏆 New Best!
-              </motion.div>
-            )}
-          </div>
         </div>
 
 
@@ -465,23 +306,23 @@ export function Dashboard() {
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Noise Level Monitoring */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Noise Level Monitoring — real microphone reading */}
               <Card className={`border-2 transition-all duration-300 hover:scale-105 cursor-pointer ${
-                noiseLevel > 70 ? 'bg-amber-500/5 border-amber-500/40 hover:shadow-[0_0_25px_rgba(251,191,36,0.4)]' : 
-                noiseLevel > 55 ? 'bg-cyan-500/5 border-cyan-500/30 hover:shadow-[0_0_25px_rgba(6,182,212,0.4)]' :
+                noiseLevel != null && noiseLevel > 70 ? 'bg-amber-500/5 border-amber-500/40 hover:shadow-[0_0_25px_rgba(251,191,36,0.4)]' :
+                noiseLevel != null && noiseLevel > 55 ? 'bg-cyan-500/5 border-cyan-500/30 hover:shadow-[0_0_25px_rgba(6,182,212,0.4)]' :
                 'bg-emerald-500/5 border-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)]'
               }`}>
                 <div className="p-6">
                   <div className="flex items-start gap-2 mb-4">
                     <div className={`w-8 h-8 rounded-lg ${
-                      noiseLevel > 70 ? 'bg-amber-500/20' :
-                      noiseLevel > 55 ? 'bg-cyan-500/20' :
+                      noiseLevel != null && noiseLevel > 70 ? 'bg-amber-500/20' :
+                      noiseLevel != null && noiseLevel > 55 ? 'bg-cyan-500/20' :
                       'bg-emerald-500/20'
                     } flex items-center justify-center flex-shrink-0`}>
                       <Volume2 className={`w-4 h-4 ${
-                        noiseLevel > 70 ? 'text-amber-400' :
-                        noiseLevel > 55 ? 'text-cyan-400' :
+                        noiseLevel != null && noiseLevel > 70 ? 'text-amber-400' :
+                        noiseLevel != null && noiseLevel > 55 ? 'text-cyan-400' :
                         'text-emerald-400'
                       }`} />
                     </div>
@@ -490,72 +331,73 @@ export function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="mb-4">
-                    <div className={`text-4xl font-bold mb-2 ${
-                      noiseLevel > 70 ? 'text-amber-400' :
-                      noiseLevel > 55 ? 'text-cyan-400' :
-                      'text-emerald-400'
-                    }`}>
-                      {noiseLevel.toFixed(0)} <span className="text-2xl">dB</span>
-                    </div>
-                    <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-300 ${
-                          noiseLevel > 70 ? 'bg-gradient-to-r from-amber-500 to-red-500' :
-                          noiseLevel > 55 ? 'bg-gradient-to-r from-emerald-500 to-cyan-500' :
-                          'bg-gradient-to-r from-emerald-500 to-green-500'
-                        }`}
-                        style={{ width: `${Math.min((noiseLevel / 90) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {noiseLevel > 70 && (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle className="w-4 h-4 text-amber-400" />
-                        <span className="text-sm font-medium text-amber-400">High Noise</span>
-                      </div>
-                      <p className="text-sm text-gray-300 mb-3">
-                        {noiseLevel.toFixed(0)} dB — may trigger sensory overload
-                      </p>
-                      <Button 
-                        size="sm" 
-                        className="bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-500/30 w-full"
+                  {noiseLevel == null ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-400">Grant microphone access to measure the noise around you. Nothing is recorded.</p>
+                      <Button
+                        size="sm"
+                        className="bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/30 w-full"
+                        onClick={() => monitoring.requestMicPermission()}
                       >
-                        <MoveRight className="w-4 h-4 mr-2" />
-                        Find Quieter Space
+                        <Volume2 className="w-4 h-4 mr-2" />
+                        {monitoring.micPermission === 'denied' ? 'Access denied — try again' : 'Grant Microphone Access'}
                       </Button>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className={`text-4xl font-bold mb-2 ${
+                          noiseLevel > 70 ? 'text-amber-400' : noiseLevel > 55 ? 'text-cyan-400' : 'text-emerald-400'
+                        }`}>
+                          {noiseLevel.toFixed(0)} <span className="text-2xl">dB</span>
+                        </div>
+                        <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              noiseLevel > 70 ? 'bg-gradient-to-r from-amber-500 to-red-500' :
+                              noiseLevel > 55 ? 'bg-gradient-to-r from-emerald-500 to-cyan-500' :
+                              'bg-gradient-to-r from-emerald-500 to-green-500'
+                            }`}
+                            style={{ width: `${Math.min((noiseLevel / 90) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
 
-                  {noiseLevel > 55 && noiseLevel <= 70 && (
-                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">
-                        Moderate — {noiseLevel.toFixed(0)} dB
-                      </p>
-                    </div>
-                  )}
+                      {noiseLevel > 70 && (
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertCircle className="w-4 h-4 text-amber-400" />
+                            <span className="text-sm font-medium text-amber-400">High Noise</span>
+                          </div>
+                          <p className="text-sm text-gray-300">
+                            {noiseLevel.toFixed(0)} dB — may trigger sensory overload
+                          </p>
+                        </div>
+                      )}
+                      {noiseLevel > 55 && noiseLevel <= 70 && (
+                        <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg p-3">
+                          <p className="text-sm text-gray-300">Moderate — {noiseLevel.toFixed(0)} dB</p>
+                        </div>
+                      )}
+                      {noiseLevel <= 55 && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                          <p className="text-sm text-gray-300">Optimal — {noiseLevel.toFixed(0)} dB</p>
+                        </div>
+                      )}
 
-                  {noiseLevel <= 55 && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">
-                        Optimal — {noiseLevel.toFixed(0)} dB
-                      </p>
-                    </div>
+                      <div className="mt-4 pt-4 border-t border-gray-800">
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Whisper</span>
+                          <span>Normal</span>
+                          <span>Loud</span>
+                        </div>
+                      </div>
+                    </>
                   )}
-
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Whisper</span>
-                      <span>Normal</span>
-                      <span>Loud</span>
-                    </div>
-                  </div>
                 </div>
               </Card>
 
-              {/* Phone Usage & Break Suggestion */}
+              {/* Screen Time — real elapsed session time */}
               <Card className={`border-2 transition-all duration-300 hover:scale-105 cursor-pointer ${
                 showBreakSuggestion ? 'bg-purple-500/5 border-purple-500/40 hover:shadow-[0_0_25px_rgba(168,85,247,0.4)]' :
                 'bg-indigo-500/5 border-indigo-500/30 hover:shadow-[0_0_25px_rgba(99,102,241,0.4)]'
@@ -578,7 +420,7 @@ export function Dashboard() {
                     <div className={`text-4xl font-bold mb-2 ${
                       showBreakSuggestion ? 'text-purple-400' : 'text-indigo-400'
                     }`}>
-                      {phoneUsageMinutes.toFixed(0)} <span className="text-2xl">min</span>
+                      {sessionMinutes} <span className="text-2xl">min</span>
                     </div>
                     <p className="text-sm text-gray-400">Current session time</p>
                   </div>
@@ -590,64 +432,62 @@ export function Dashboard() {
                         <span className="text-sm font-medium text-purple-400">Break Recommended</span>
                       </div>
                       <p className="text-sm text-gray-300 mb-3">
-                        You've been using your phone for {phoneUsageMinutes.toFixed(0)} minutes with minimal task progress. Taking a break might help you reset and refocus.
+                        You've been on screen for {sessionMinutes} minutes with a high mental load. Taking a break might help you reset.
                       </p>
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          className="bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 flex-1"
-                          onClick={() => {
-                            setShowBreakSuggestion(false);
-                            setPhoneUsageMinutes(0);
-                          }}
-                        >
-                          <Clock className="w-4 h-4 mr-2" />
-                          Take 5-min Break
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          className="text-gray-400 hover:text-gray-300"
-                          onClick={() => setShowBreakSuggestion(false)}
-                        >
-                          Dismiss
-                        </Button>
-                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-gray-400 hover:text-gray-300"
+                        onClick={() => setShowBreakSuggestion(false)}
+                      >
+                        Dismiss
+                      </Button>
                     </div>
                   )}
 
-                  {!showBreakSuggestion && phoneUsageMinutes > 15 && (
+                  {!showBreakSuggestion && sessionMinutes > 15 && (
                     <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">
-                        Good progress — {phoneUsageMinutes.toFixed(0)} min focused
-                      </p>
+                      <p className="text-sm text-gray-300">Good progress — {sessionMinutes} min this session</p>
                     </div>
                   )}
 
-                  {!showBreakSuggestion && phoneUsageMinutes <= 15 && (
+                  {!showBreakSuggestion && sessionMinutes <= 15 && (
                     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">
-                        Fresh start — You're doing great!
-                      </p>
+                      <p className="text-sm text-gray-300">Fresh start — You're doing great!</p>
                     </div>
                   )}
+                </div>
+              </Card>
 
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <div className="text-xs text-gray-500">
-                      <div className="flex items-center justify-between mb-1">
-                        <span>Time since last progress:</span>
-                        <span className="text-gray-400">{Math.floor((Date.now() - lastProgressTime) / 60000)} min</span>
-                      </div>
+              {/* Ambient Brightness — best-effort, most browsers don't expose this */}
+              <Card className="border-2 bg-gray-500/5 border-gray-700 transition-all duration-300 hover:scale-105 cursor-pointer">
+                <div className="p-6">
+                  <div className="flex items-start gap-2 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-gray-700/30 flex items-center justify-center flex-shrink-0">
+                      <Eye className="w-4 h-4 text-gray-300" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-base font-medium text-white">Ambient Light</h4>
                     </div>
                   </div>
+
+                  {monitoring.brightnessSupported && monitoring.brightnessLux != null ? (
+                    <div className="text-4xl font-bold mb-2 text-gray-200">
+                      {monitoring.brightnessLux.toFixed(0)} <span className="text-2xl">lux</span>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">
+                      Not supported on this browser/device — most browsers don't expose ambient light or screen brightness to web pages.
+                    </p>
+                  )}
                 </div>
               </Card>
             </div>
           </div>
         )}
 
-        {/* Capacity and Performance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Capacity Card */}
+        <div className="grid grid-cols-1 gap-6 mb-8">
           {/* Reaching Overload Card */}
           <Card className="bg-[#0f0f0f] border-amber-500/30 p-6 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_25px_rgba(251,191,36,0.4)] cursor-pointer">
             <div className="flex items-start gap-3 mb-4">
@@ -710,44 +550,6 @@ export function Dashboard() {
               </div>
             )}
           </Card>
-
-          {/* Best Focus Score Card */}
-          <Card className="bg-[#0f0f0f] border-emerald-500/30 p-4 transition-all duration-300 hover:scale-105 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] cursor-pointer">
-            <div className="flex items-start gap-3 mb-1">
-              <Target className="w-5 h-5 text-emerald-400 mt-0.5" />
-              <div>
-                <h3 className="text-lg text-white font-medium">Your Best Focus Score</h3>
-              </div>
-            </div>
-
-            {/* Value aligned with scale */}
-            <div className="mb-1">
-              <div className="text-4xl font-bold text-emerald-400 h-12 flex items-center">76%</div>
-            </div>
-
-            {/* Progress Circle or Bar */}
-            <div className="relative mb-16">
-              <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-300"
-                  style={{ width: '76%' }}
-                />
-              </div>
-            </div>
-
-            {/* Comparison */}
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                </svg>
-                <span className="font-medium">Better than last week</span>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Your focus has improved by 12% compared to your 7-day average.
-              </p>
-            </div>
-          </Card>
         </div>
 
         {/* Proactive Recommendations */}
@@ -787,7 +589,7 @@ export function Dashboard() {
             )}
 
             {/* High Capacity Window */}
-            {mentalLoad < 40 && taskFocus > 70 && timeOfDay >= 8 && timeOfDay <= 11 && (
+            {mentalLoad < 40 && timeOfDay >= 8 && timeOfDay <= 11 && (
               <Card className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-purple-500/20 p-6 mb-6">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">

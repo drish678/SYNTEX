@@ -8,6 +8,7 @@ import { Separator } from "../components/ui/separator";
 import { Shield, Lock, Eye, Volume2, Bell, Trash2, AlertCircle, User, Edit, RefreshCw, Smartphone, Watch, Heart, Activity, Download, Lightbulb, Power, MapPin, Navigation, Palette, ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate, useOutletContext } from "react-router";
 import { toast } from "sonner";
+import { api } from "../api";
 
 interface OutletContext {
   appEnabled: boolean;
@@ -30,6 +31,30 @@ export function Settings() {
   const [crisisDetectionEnabled, setCrisisDetectionEnabled] = useState(true);
   const [sensitivityLevel, setSensitivityLevel] = useState([60]);
   const [appleWatchConnected, setAppleWatchConnected] = useState(false);
+  const [reduceNotificationSounds, setReduceNotificationSounds] = useState(false);
+  const [dndSync, setDndSync] = useState(false);
+
+  useEffect(() => {
+    api.getSettings().then((s) => {
+      setBiometricEnabled(s.biometricEnabled);
+      setNotificationsEnabled(s.notificationsEnabled);
+      setAutoFilterEnabled(s.autoFilterEnabled);
+      setCrisisDetectionEnabled(s.crisisDetectionEnabled);
+      setSensitivityLevel([s.sensitivityLevel]);
+      setAppleWatchConnected(s.appleWatchConnected);
+      setReduceNotificationSounds(s.reduceNotificationSounds);
+      setDndSync(s.dndSync);
+    });
+  }, []);
+
+  const handleBiometricChange = (v: boolean) => { setBiometricEnabled(v); api.updateSettings({ biometricEnabled: v }); };
+  const handleNotificationsChange = (v: boolean) => { setNotificationsEnabled(v); api.updateSettings({ notificationsEnabled: v }); };
+  const handleAutoFilterChange = (v: boolean) => { setAutoFilterEnabled(v); api.updateSettings({ autoFilterEnabled: v }); };
+  const handleCrisisDetectionChange = (v: boolean) => { setCrisisDetectionEnabled(v); api.updateSettings({ crisisDetectionEnabled: v }); };
+  const handleSensitivityChange = (v: number[]) => { setSensitivityLevel(v); api.updateSettings({ sensitivityLevel: v[0] }); };
+  const handleReduceSoundsChange = (v: boolean) => { setReduceNotificationSounds(v); api.updateSettings({ reduceNotificationSounds: v }); };
+  const handleDndSyncChange = (v: boolean) => { setDndSync(v); api.updateSettings({ dndSync: v }); };
+
   const [showSemicolonDialog, setShowSemicolonDialog] = useState(false);
   const [showSemicolonInfo, setShowSemicolonInfo] = useState(false);
   const [showPauseDialog, setShowPauseDialog] = useState(false);
@@ -38,14 +63,15 @@ export function Settings() {
 
   // Avatar state
   const [showAvatarCreator, setShowAvatarCreator] = useState(false);
-  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(() => {
-    const saved = localStorage.getItem("syntex_avatar");
-    return saved ? JSON.parse(saved) : DEFAULT_AVATAR;
-  });
+  const [avatarConfig, setAvatarConfig] = useState<AvatarConfig>(DEFAULT_AVATAR);
+
+  useEffect(() => {
+    api.getAvatar().then((saved) => { if (saved) setAvatarConfig(saved); });
+  }, []);
 
   const saveAvatar = (config: AvatarConfig) => {
     setAvatarConfig(config);
-    localStorage.setItem("syntex_avatar", JSON.stringify(config));
+    api.saveAvatar(config);
     toast.success("Avatar saved!", { description: "Your avatar has been updated." });
   };
 
@@ -54,36 +80,42 @@ export function Settings() {
   const [audioPermission, setAudioPermission] = useState<"granted" | "denied" | "prompt">("prompt");
   const [isMonitoringAudio, setIsMonitoringAudio] = useState(false);
 
-  // Get profile data from localStorage
-  const getProfileData = () => {
-    const data = localStorage.getItem("syntex_calibration");
-    if (data) {
-      return JSON.parse(data);
-    }
-    return null;
-  };
+  // Profile data
+  const [profile, setProfile] = useState<any>(null);
 
-  const profile = getProfileData();
+  useEffect(() => {
+    api.getProfile().then((data) => { if (data && data.name) setProfile(data); });
+  }, []);
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
+    const data = await api.exportData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "syntex-data-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
     toast.success("Data exported", {
       description: "Your biometric data has been saved to your device.",
     });
   };
 
-  const handleDeleteData = () => {
+  const handleDeleteData = async () => {
+    await api.wipeData();
+    setProfile(null);
     toast.success("Data deleted", {
       description: "All stored biometric data has been permanently removed.",
     });
   };
 
-  const handleResetProfile = () => {
+  const handleResetProfile = async () => {
     if (
       window.confirm(
         "Are you sure you want to reset your profile? This will clear all your personalized settings and you'll need to build your profile again."
       )
     ) {
-      localStorage.removeItem("syntex_calibration");
+      await api.deleteProfile();
       toast.success("Profile reset", {
         description: "Your profile has been reset. You can now build a new profile.",
       });
@@ -93,16 +125,17 @@ export function Settings() {
   };
 
   const handleConnectAppleWatch = () => {
-    if (!appleWatchConnected) {
+    const next = !appleWatchConnected;
+    setAppleWatchConnected(next);
+    api.updateSettings({ appleWatchConnected: next });
+    if (next) {
       toast.success("Apple Watch connected", {
         description: "Now tracking heart rate, sleep patterns, and activity levels.",
       });
-      setAppleWatchConnected(true);
     } else {
       toast.info("Apple Watch disconnected", {
         description: "Health tracking paused.",
       });
-      setAppleWatchConnected(false);
     }
   };
 
@@ -475,7 +508,7 @@ export function Settings() {
               label="Enable biometric tracking"
               description="Monitor heart rate, movement, and device sensors"
               value={biometricEnabled}
-              onChange={setBiometricEnabled}
+              onChange={handleBiometricChange}
             />
 
             <Separator className="bg-gray-800" />
@@ -492,7 +525,7 @@ export function Settings() {
               </div>
               <Slider
                 value={sensitivityLevel}
-                onValueChange={setSensitivityLevel}
+                onValueChange={handleSensitivityChange}
                 min={0}
                 max={100}
                 step={10}
@@ -618,7 +651,7 @@ export function Settings() {
               label="Just-in-time alerts"
               description="Surface warnings only when metrics reach critical levels"
               value={notificationsEnabled}
-              onChange={setNotificationsEnabled}
+              onChange={handleNotificationsChange}
             />
 
             <Separator className="bg-gray-800" />
@@ -627,7 +660,7 @@ export function Settings() {
               label="Auto-apply sensory filters"
               description="Automatically reduce screen brightness and notifications when load is high"
               value={autoFilterEnabled}
-              onChange={setAutoFilterEnabled}
+              onChange={handleAutoFilterChange}
             />
           </div>
         </Card>
@@ -639,7 +672,7 @@ export function Settings() {
               label="Enable crisis detection"
               description="Monitor for signs of panic attacks or severe overwhelm"
               value={crisisDetectionEnabled}
-              onChange={setCrisisDetectionEnabled}
+              onChange={handleCrisisDetectionChange}
             />
 
             <Separator className="bg-gray-800" />
@@ -718,6 +751,8 @@ export function Settings() {
               icon={Volume2}
               label="Reduce notification sounds"
               description="Use gentle vibrations instead of audio alerts"
+              value={reduceNotificationSounds}
+              onChange={handleReduceSoundsChange}
             />
             <SensoryToggle
               icon={Eye}
@@ -732,6 +767,8 @@ export function Settings() {
               icon={Bell}
               label="Do not disturb sync"
               description="Automatically enable when your phone is in DND mode"
+              value={dndSync}
+              onChange={handleDndSyncChange}
             />
           </div>
         </Card>

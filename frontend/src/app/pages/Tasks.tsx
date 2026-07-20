@@ -8,27 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { motion, AnimatePresence } from "motion/react";
 import { useOutletContext } from "react-router";
 import { toast } from "sonner";
+import { api, Task } from "../api";
+import { useMonitoring } from "../contexts/MonitoringContext";
 
 interface OutletContext {
   appEnabled: boolean;
   triggerCrisis: () => void;
 }
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  complexity: "low" | "medium" | "high";
-  urgency: "low" | "medium" | "high";
-  estimatedMinutes: number;
-  completed: boolean;
-  createdAt: Date;
-}
-
 export function Tasks() {
 
 
   const { appEnabled } = useOutletContext<OutletContext>();
+  const { mentalLoad } = useMonitoring();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -39,39 +31,12 @@ export function Tasks() {
     estimatedMinutes: 30,
   });
 
-  // Simulated current state (in real app, this would come from Dashboard context)
-  const [mentalLoad, setMentalLoad] = useState(45);
-  const [focusStatus, setFocusStatus] = useState(75);
   const [timeOfDay] = useState(new Date().getHours());
 
-  // Load tasks from localStorage
+  // Load tasks from the backend
   useEffect(() => {
-    const savedTasks = localStorage.getItem("syntex_tasks");
-    if (savedTasks) {
-      const parsed = JSON.parse(savedTasks);
-      setTasks(parsed.map((t: any) => ({
-        ...t,
-        createdAt: new Date(t.createdAt)
-      })));
-    }
+    api.listTasks().then(setTasks);
   }, []);
-
-  // Save tasks to localStorage
-  useEffect(() => {
-    if (tasks.length > 0) {
-      localStorage.setItem("syntex_tasks", JSON.stringify(tasks));
-    }
-  }, [tasks]);
-
-  // Simulate mental load changes
-  useEffect(() => {
-    if (!appEnabled) return;
-    const interval = setInterval(() => {
-      setMentalLoad(prev => Math.max(0, Math.min(100, prev + (Math.random() - 0.5) * 5)));
-      setFocusStatus(prev => Math.max(0, Math.min(100, prev + (Math.random() - 0.5) * 6)));
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [appEnabled]);
 
   // Check if mental load is too high
   const isMentalLoadTooHigh = mentalLoad > 75;
@@ -87,16 +52,10 @@ export function Tasks() {
     setShowAddTask(true);
   };
 
-  const addTask = () => {
+  const addTask = async () => {
     if (!newTask.title.trim()) return;
 
-    const task: Task = {
-      id: Date.now().toString(),
-      ...newTask,
-      completed: false,
-      createdAt: new Date(),
-    };
-
+    const task = await api.createTask(newTask);
     setTasks([...tasks, task]);
     setNewTask({
       title: "",
@@ -109,11 +68,15 @@ export function Tasks() {
     toast.success("Task added successfully!");
   };
 
-  const toggleTask = (id: string) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  const toggleTask = async (id: string) => {
+    const target = tasks.find(t => t.id === id);
+    if (!target) return;
+    const updated = await api.updateTask(id, { completed: !target.completed });
+    setTasks(tasks.map(t => t.id === id ? updated : t));
   };
 
-  const deleteTask = (id: string) => {
+  const deleteTask = async (id: string) => {
+    await api.deleteTask(id);
     setTasks(tasks.filter(t => t.id !== id));
     toast.success("Task deleted successfully!");
   };
@@ -160,11 +123,6 @@ export function Tasks() {
       // Evening - avoid complex tasks
       if (task.complexity === "high") score -= 10;
       if (task.complexity === "low") score += 10;
-    }
-
-    // Focus status bonus
-    if (focusStatus > 70 && task.complexity === "high") {
-      score += 10;
     }
 
     return score;
@@ -274,22 +232,14 @@ export function Tasks() {
             </div>
             <div className="flex-1">
               <h3 className="text-base text-white mb-2">Your Current Capacity</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-gray-400 text-xs mb-1">Mental Load</div>
-                  <div className={`font-medium ${mentalLoad > 70 ? 'text-red-400' : mentalLoad > 40 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                    {mentalLoad.toFixed(0)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-400 text-xs mb-1">Focus Status</div>
-                  <div className={`font-medium ${focusStatus > 70 ? 'text-emerald-400' : focusStatus > 40 ? 'text-amber-400' : 'text-red-400'}`}>
-                    {focusStatus.toFixed(0)}%
-                  </div>
+              <div className="text-sm">
+                <div className="text-gray-400 text-xs mb-1">Mental Load</div>
+                <div className={`font-medium ${mentalLoad > 70 ? 'text-red-400' : mentalLoad > 40 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {mentalLoad.toFixed(0)}%
                 </div>
               </div>
               <div className="mt-3 text-sm text-indigo-300">
-                {mentalLoad < 40 && focusStatus > 70 ? (
+                {mentalLoad < 40 ? (
                   <span className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4" />
                     Great time for complex tasks
