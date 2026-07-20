@@ -1,0 +1,93 @@
+You're getting the full experience!
+Your profile is set up and SYNTEX is now calibrated to your personal triggers, environment, and sensory thresholds. All metrics are tailored to drish's unique needs.
+
+Your Current State
+✦
+Real-time biometric monitoring. All data stays on your device.
+
+Sensory Load
+Environmental intensity
+
+41
+Status
+Moderate
+Mental Load Level
+Current cognitive demand
+
+78
+Status
+High
+Focus Status
+Task engagement intensity
+
+89
+Status
+Optimal
+Environmental Monitoring
+✦
+Background Noise
+Environmental sound level
+
+45 dB
+Quiet environment (45 dB). Optimal for focus work.
+
+Whisper
+Normal
+Loud
+Screen Time
+Activity tracking
+
+0 min
+Current session time
+
+Fresh session started. You're doing great!
+
+Time since last progress:
+0 min
+Getting Full
+78%
+60
+(Safe)
+80
+(Caution)
+100
+(Overload)
+You're getting close to your limit. Consider taking a short break soon or switching to easier tasks.
+
+Your Best Focus Score
+76%
+Better than last week
+Your focus has improved by 12% compared to your 7-day average.
+
+
+What do these metrics mean?
+Tap to learn how to read your dashboard
+
+Sensory Load
+Low (0-30%):
+Environment is calm, minimal stimulation
+Optimal (30-60%):
+Balanced sensory input, comfortable range
+High (60-85%):
+Approaching your threshold, consider reducing stimuli
+Critical (85-100%):
+Sensory overload imminent, immediate action needed
+Mental Load Level
+Low (0-30%):
+Mind is clear, capacity for complex tasks
+Optimal (30-60%):
+Engaged but not overwhelmed, good productivity zone
+High (60-85%):
+Cognitive fatigue building, time to simplify
+Critical (85-100%):
+Mental exhaustion, rest required
+Focus Status
+Low (0-30%):
+Difficulty concentrating, frequent distractions
+Moderate (30-60%):
+Basic focus present, may need support
+Optimal (60-85%):
+Deep focus achieved, in the flow state
+Peak (85-100%):
+Hyperfocus mode, excellent concentration
+💡 The semicolon (;) represents a pause—not a full stop. Just like in writing, it allows you to continue while giving yourself a moment to recalibrate.
